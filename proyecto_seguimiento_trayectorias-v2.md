@@ -31,7 +31,15 @@ El sistema debe permitir detectar situaciones de criticidad en tres momentos esp
     *   **Factores Psicológicos:** Stress extremo o ataques de pánico ante la inminencia de la responsabilidad profesional del ingeniero.
 *   **Acción:** Identificación de inactividad prolongada y oferta de canales de retorno guiado o planes de egreso flexibles que faciliten el cierre de la trayectoria.
 
-## 3. Alcance del Proyecto
+## 3. Análisis de Alternativas y Factibilidad Técnica
+En la fase de definición se han evaluado diversas opciones, estableciendo los siguientes criterios de selección:
+
+*   **Alternativa A: Formularios Estándar (Google Forms / Excel):** Considerada el "piso mínimo de referencia". Se descarta como producto final por su incapacidad de gestionar lógica compleja, validaciones automáticas y visualización dinámica ("No me bromeen con algo que se hace en 20 minutos").
+*   **Alternativa B: Integración Directa con SIU Guaraní:** Descartada por restricciones de seguridad institucional; el SIU es una base cerrada que no permite consultas externas en tiempo real. Esto obliga a la creación de una **Base de Datos Propia y Proactiva**.
+*   **Alternativa C: Maquetas Estáticas (PowerPoint / Figma):** Descartadas como entregable final. El cliente exige un producto funcional y "comprable" que ejecute las acciones de alerta (referencia: "Dubai Chocolate").
+*   **Solución Elegida: Sistema Web Embebido en Moodle:** Se opta por desarrollar un paquete/programa alojado en el entorno Moodle (LMS/NMS) por ser software libre, garantizar el acceso de todos los alumnos y permitir la centralización de datos en una base de datos departamental gestionable.
+
+## 4. Alcance del Proyecto
 El sistema se define como una plataforma de **trazabilidad, alerta y gestión de tutorías**, que servirá tanto de tablero de comando para la gestión académica como de interfaz de comunicación y autogestión para el estudiante.
 
 ## 4. Estrategia de Recolección y Relevamiento
@@ -41,9 +49,10 @@ La integridad del sistema depende de la calidad y periodicidad de los datos ingr
 El sistema debe permitir la carga y procesamiento de las siguientes variables, categorizadas según su impacto en la trayectoria:
 
 #### A. Variables de Perfil de Base (Carga Única)
-*   **Origen e Institución:** Tipo de secundario (Pública vs. Privada), lugar de procedencia (distancia a la facultad) y percepción del desempeño escolar previo.
-*   **Indicadores de Entorno Académico Familiar:** Nivel educativo de la madre (predictor crítico de éxito académico identificado por el cliente).
-*   **Situación Habitacional y Socio-Cultural:** Si el estudiante alquila, si tiene personas a su cargo y composición del núcleo familiar.
+*   **Origen e Institución:** Tipo de secundario (Pública vs. Privada), lugar de procedencia y percepción del desempeño escolar previo.
+*   **Indicadores Socio-Educativos:** Nivel educativo de la madre (predictor crítico de éxito académico identificado por el cliente).
+*   **Situación Habitacional y Movilidad:** Si el estudiante alquila, distancia precisa de viaje (Kilómetros) y medios de transporte utilizados.
+*   **Entorno Familiar:** Composición familiar, cantidad de personas a cargo y posibles situaciones de hermanos en la misma facultad (indicador de apoyo o carga económica).
 
 #### B. Variables Dinámicas y Cualitativas (Carga Periódica)
 *   **Laboral:** Status de empleo, carga horaria semanal y afinidad de la tarea con la especialidad.
@@ -74,7 +83,7 @@ El sistema debe procesar la información recolectada mediante un motor de reglas
 Se definen tres roles con permisos diferenciados:
 1.  **Administrador Máster (Gestión Académica):** Responsable de configurar los parámetros de criticidad, gestionar usuarios y acceder a reportes globales de impacto (ej. para reformas de plan de estudios).
 2.  **Tutor:** Perfil operativo encargado de gestionar su "pool" de alumnos asignados, registrar minutas de entrevistas y dar seguimiento a los compromisos de mejora.
-3.  **Estudiante:** Usuario final con permisos exclusivos para carga de encuestas, visualización de su tablero de rendimiento comparativo y envío de solicitudes de asistencia.
+3.  **Estudiante:** Usuario final con permisos exclusivos para carga de encuestas, visualización de su tablero de rendimiento y acceso directo al **"Botón de Auxilio"** (Canal de solicitud de ayuda urgente).
 
 ### 5.2. Motor de Indicadores y Semáforos (Reglas de Negocio)
 La lógica de asignación de alarmas (semáforos) debe ser **totalmente parametrizable** por el Administrador sin requerir re-programación:
@@ -98,13 +107,16 @@ El sistema debe ofrecer una visualización de datos dinámica e interactiva que 
 *   **Tablero de Gestión (Directivo/Tutor):**
     *   **Análisis Macro:** Resultados globales de rendimiento por materia, nivel de deserción por año y eficacia de las tutorías.
     *   **Drill-Down (Micro):** Capacidad de entrar en el perfil de un estudiante puntual, ver su trayectoria completa y las observaciones cualitativas de sus tutores.
-    *   **Alertas de Cátedra:** Identificación de materias con picos de desaprobados o comentarios negativos. Esto permitirá al Director del Departamento la **intervención directa con los docentes** responsables (ej. casos donde la tasa de aplazos se duplica).
+    *   **Alertas de Cátedra y Contraste de Rendimiento:** Identificación de materias con picos de desaprobados. El sistema debe permitir el **contraste automático** entre la estadística de aprobación (ej. 90% aprobados) y la percepción del alumno (ej. 0% de satisfacción), para detectar cátedras con problemas de clima o métodos pedagógicos deficientes. Esto permitirá al Director del Departamento la **intervención directa con los docentes** responsables (ej. casos donde la tasa de aplazos se duplica).
+    *   **Monitoreo de la Gestión de Tutorías:** Tablero de control para que el Director supervise la actividad de los tutores, asegurando que las entrevistas se realicen y se registren en tiempo y forma.
     *   **Exportación para Investigación:** Capacidad de exportar estructuras de datos que sirvan para alimentar las investigaciones académicas del Departamento sobre deserción.
+*   **Canal de Solicitud de Ayuda (Botón de Auxilio):** El sistema debe proveer una interfaz directa (pantalla de asistencia) donde el alumno en situación de crisis pueda solicitar intervención inmediata de los tutores, centralizando reclamos que usualmente se dispersan en páginas externas.
 
 ### 5.5. Requisitos de Interfaz y UX (User Experience)
 *   **Optimización del Tiempo:** Las encuestas deben ser breves y de navegación intuitiva para evitar que el estudiante las perciba como un proceso tedioso (riesgo de deserción del propio sistema).
 *   **Estética "Premiun":** Siguiendo la premisa del cliente ("Chocolate Dubai"), la interfaz debe ser visualmente atractiva, moderna y profesional, superando cualquier herramienta de recolección de datos convencional.
 *   **Embebido en el Campus:** Integración visual total con el entorno Moodle para que el acceso sea fluido y natural.
+*   **Canal de Alivio de Conflictos:** El sistema debe actuar como el canal oficial de escucha para evitar que las problemáticas solo se manifiesten en páginas de quejas externas o en el Centro de Estudiantes una vez que la situación es crítica.
 
 ## 6. Infraestructura Técnica y Mantenimiento
 El sistema debe diseñarse bajo principios de sostenibilidad y bajo costo, aprovechando ecosistemas existentes.
