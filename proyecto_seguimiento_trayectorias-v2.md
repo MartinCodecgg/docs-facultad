@@ -112,7 +112,16 @@ El sistema debe ofrecer una visualización de datos dinámica e interactiva que 
     *   **Exportación para Investigación:** Capacidad de exportar estructuras de datos que sirvan para alimentar las investigaciones académicas del Departamento sobre deserción.
 *   **Canal de Solicitud de Ayuda (Botón de Auxilio):** El sistema debe proveer una interfaz directa (pantalla de asistencia) donde el alumno en situación de crisis pueda solicitar intervención inmediata de los tutores, centralizando reclamos que usualmente se dispersan en páginas externas.
 
-### 5.5. Requisitos de Interfaz y UX (User Experience)
+### 5.5. Mapa Preliminar de Interfaces (Estructura de Pantallas)
+Basado en los requerimientos funcionales, el sistema debe contemplar al menos los siguientes módulos de visualización:
+1.  **Dashboard de Gestión Estratégica:** Pantalla principal para el Director con métricas globales, alertas de cátedra y reportes de investigación.
+2.  **Módulo de Supervisión de Tutorías:** Interfaz para el Administrador para monitorear el desempeño del pool de tutores.
+3.  **Consola de Seguimiento Individual (Tutor):** Pantalla de gestión de casos asignados, historial de entrevistas y semáforos de riesgo.
+4.  **Tablero de Autogestión Estudiantil:** Perfil del alumno, visualización comparativa (Plan vs. Cohorte) y barra de progreso.
+5.  **Centro de Relevamiento (Encuestas):** Interfaz dinámica de carga periódica (materia por materia) y carga histórica inicial.
+6.  **Pestaña de Auxilio Urgente:** Interfaz de acceso rápido para solicitudes de intervención inmediata académica o personal.
+
+### 5.6. Requisitos de Interfaz y UX (User Experience)
 *   **Optimización del Tiempo:** Las encuestas deben ser breves y de navegación intuitiva para evitar que el estudiante las perciba como un proceso tedioso (riesgo de deserción del propio sistema).
 *   **Estética "Premiun":** Siguiendo la premisa del cliente ("Chocolate Dubai"), la interfaz debe ser visualmente atractiva, moderna y profesional, superando cualquier herramienta de recolección de datos convencional.
 *   **Embebido en el Campus:** Integración visual total con el entorno Moodle para que el acceso sea fluido y natural.
@@ -127,9 +136,10 @@ Dada la gratuidad y apertura de Moodle, el sistema debe integrarse profundamente
 *   **Aprovechamiento de APIs:** Uso de la documentación pública de Moodle para interoperabilidad y posible embebido de encuestas.
 *   **Administración:** Distinguir entre la administración docente (gestión de contenidos) y la administración técnica de la plataforma.
 
-### 6.2. Mantenibilidad y Costos Operativos
-*   **Software Libre:** El departamento no posee presupuesto para licencias ("no poner pesetas"); se exige el uso exclusivo de tecnologías de código abierto o gratuitas.
-*   **Sostenibilidad:** El mantenimiento técnico (backups, integridad de base, seguridad) debe ser lo más automatizado posible para no depender de personal informático exclusivo de tiempo completo.
+### 6.2. Sostenibilidad y Mantenimiento
+*   **Mantenimiento Técnico:** Backups, seguridad de la base y actualizaciones de servidor; debe ser lo más automatizado posible para no depender de personal informático exclusivo de tiempo completo.
+*   **Mantenimiento Funcional:** El sistema debe ser lo suficientemente flexible para permitir cambios en las encuestas, incorporación de nuevas materias o modificaciones en los planes de estudio sin generar inconsistencias en los datos históricos (evitar que la base "se muera" por cambios administrativos).
+*   **Software Libre:** Uso exclusivo de tecnologías open source conforme a la restricción presupuestaria ("no poner un peso"). El departamento no posee presupuesto para licencias.
 
 ## 7. Marco Legal y Tratamiento de Información Sensible
 El manejo de datos sobre salud, situación económica y rendimiento docente exige cumplimiento estricto:
@@ -161,7 +171,7 @@ El equipo de la Consultora deberá estructurarse bajo los roles definidos admini
 La consultora tiene la obligación de profundizar en el dominio del problema mediante:
 *   **Investigación de Patrones de Deserción:** Análisis de métricas estándar en el sistema universitario argentino para generar indicadores con base científica.
 *   **Benchmarking de Fallos y Errores Previos:** Búsqueda y análisis de sistemas similares que hayan fallado en otras facultades, identificando los motivos de su fracaso para evitar el re-trabajo y la repetición de errores comunes.
-*   **Exploración de Entorno (Administrador de Moodle):** Salto cualitativo del rol de estudiante al de administrador/docente para entender las capacidades reales de integración de la plataforma.Pasar del uso básico de Moodle a la comprensión de su arquitectura administrativa.
+*   **Exploración de Entorno (Administrador de Moodle):** Salto cualitativo del rol de estudiante al de administrador/docente para entender las capacidades reales de integración de la plataforma.Pasar del uso básico de Moodle a la comprensión de su arquitectura administrativa.El Departamento facilitará el **acceso a una instancia de prueba o curso con privilegios elevados** para que la Consultora explore la arquitectura administrativa y las APIs disponibles en Moodle.
 
 ## 10. Logística de Implementación y Prueba de Escritorio
 *   **Barra de Calidad (Ingeniería vs. Herramientas Triviales):** El cliente establece que una solución tipo "Google Forms + Power BI" es un piso mínimo aceptable solo para un usuario básico. Como ingenieros, se exige un producto que integre lógica propia, validaciones automáticas y una interfaz profesional que supere dicha simplicidad de manera manifiesta.
