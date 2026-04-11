@@ -146,14 +146,16 @@ El equipo de la Consultora deberá estructurarse bajo los roles definidos admini
 3.  **Mapa de Procesos:** Diseño de cómo interactuarán físicamente los roles (Director, Tutor, Docente, Alumno) con el sistema.
 
 ## 9. Requerimientos de Investigación (Benchmarking)
-La consultora debe demostrar conocimiento de dominio mediante:
-*   **Investigación de Patrones de Deserción:** No basarse en suposiciones; estudiar métricas académicas probadas.
-*   **Benchmarking de Fallos:** Analizar por qué fallaron sistemas anteriores en otras facultades para evitar el re-trabajo.
-*   **Exploración de Entorno:** Pasar del uso básico de Moodle a la comprensión de su arquitectura administrativa.
+La consultora tiene la obligación de profundizar en el dominio del problema mediante:
+*   **Investigación de Patrones de Deserción:** Análisis de métricas estándar en el sistema universitario argentino para generar indicadores con base científica.
+*   **Benchmarking de Fallos y Errores Previos:** Búsqueda y análisis de sistemas similares que hayan fallado en otras facultades, identificando los motivos de su fracaso para evitar el re-trabajo y la repetición de errores comunes.
+*   **Exploración de Entorno (Administrador de Moodle):** Salto cualitativo del rol de estudiante al de administrador/docente para entender las capacidades reales de integración de la plataforma.Pasar del uso básico de Moodle a la comprensión de su arquitectura administrativa.
 
 ## 10. Logística de Implementación y Prueba de Escritorio
-*   **Población de Datos Reales:** Queda prohibido el uso de datos hipotéticos o estáticos ("agarrar una guitarra y componer una canción"). El equipo debe recolectar datos reales de sus pares y otros grupos para poner a prueba la lógica de semáforos.
-*   **Visión Organizacional:** Requisito de presentar la percepción propia de la estructura del Departamento para alinear horizontes con el cliente.
+*   **Barra de Calidad (Ingeniería vs. Herramientas Triviales):** El cliente establece que una solución tipo "Google Forms + Power BI" es un piso mínimo aceptable solo para un usuario básico. Como ingenieros, se exige un producto que integre lógica propia, validaciones automáticas y una interfaz profesional que supere dicha simplicidad de manera manifiesta.
+*   **Población de Datos Reales:** Queda estrictamente prohibido el uso de datos hipotéticos o estáticos ("agarrar una guitarra y componer una canción"). El equipo debe recolectar datos reales de sus pares y otros grupos de alumnos para poner a prueba la lógica de semáforos y alertas ante situaciones reales.
+*   **Sesgo de Muestra:** Se debe documentar y mitigar el sesgo si solo se utilizan estudiantes de informática, reconociendo que no son representativos de la totalidad de perfiles de la facultad.
+*   **Visión Organizacional:** Requisito de presentar una descripción de la estructura del Departamento tal como la percibe la Consultora, para alinear la mirada con la realidad del cliente.
 *   **Escalabilidad e IA:** Dejar abierta la infraestructura para el futuro procesamiento de lenguaje natural (IA) sobre los campos cualitativos extensos.
 
 ---
