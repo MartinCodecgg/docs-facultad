@@ -26,8 +26,10 @@ El sistema debe permitir detectar situaciones de criticidad en tres momentos esp
 
 ### 2.3. Deserción Tardía o "Estancamiento del Último Tramo"
 *   **Alcance:** Alumnos con más del 85-90% de la carrera cursada.
-*   **Problema:** Estudiantes que, tras haber completado casi toda la cursada, dejan de re-inscribirse o tardan de 2 a 3 años adicionales en rendir sus últimos compromisos. Factores detectados: desmotivación, ataques de pánico ante la graduación, o desvío total hacia la actividad laboral.
-*   **Acción:** Identificación de inactividad prolongada y oferta de canales de retorno guiado.
+*   **Problema:** Fenómeno donde el alumno deja de re-inscribirse o tarda entre **2 y 3 años adicionales** en rendir sus últimos compromisos tras haber completado la cursada. Factores críticos detectados:
+    *   **Captación Laboral y Desmotivación Económica:** El alumno consigue un empleo con una remuneración que percibe como superior a la que espera obtener tras graduarse, lo que genera una pérdida de sentido sobre el esfuerzo final del título.
+    *   **Factores Psicológicos:** Stress extremo o ataques de pánico ante la inminencia de la responsabilidad profesional del ingeniero.
+*   **Acción:** Identificación de inactividad prolongada y oferta de canales de retorno guiado o planes de egreso flexibles que faciliten el cierre de la trayectoria.
 
 ## 3. Alcance del Proyecto
 El sistema se define como una plataforma de **trazabilidad, alerta y gestión de tutorías**, que servirá tanto de tablero de comando para la gestión académica como de interfaz de comunicación y autogestión para el estudiante.
@@ -76,6 +78,7 @@ Se definen tres roles con permisos diferenciados:
 
 ### 5.2. Motor de Indicadores y Semáforos (Reglas de Negocio)
 La lógica de asignación de alarmas (semáforos) debe ser **totalmente parametrizable** por el Administrador sin requerir re-programación:
+*   **Interferencia Laboral y Afinidad:** Evaluar el cruce entre la carga horaria semanal y el rendimiento académico. No es un dato estático; el sistema debe alertar si el alumno aumenta su carga horaria laboral mientras disminuye su rendimiento de parciales/finales.
 *   **Indicador de "Intento vs. Logro":** Diferenciar entre el alumno que rinde 4 y aprueba 4 (lento pero efectivo) vs. el que intenta 6 y reprueba 3 (estado crítico).
 *   **Desfase de Cuatrimestres:** Detección de alumnos que cursan materias de años muy distantes entre sí.
 *   **Sucesión de Eventos Críticos:** Alarmas por recursado múltiple de una misma materia o la reprobación reiterada (2 o 3 veces) de un examen final (posible indicador de conflicto personal o docente).
@@ -131,7 +134,13 @@ El proyecto se rige por un esquema de consultoría con hitos de validación frec
 *   **Ritmo Agile:** Sprints de 2 semanas con reuniones de agenda donde cada equipo validará sus ideas antes de consolidarlas.
 *   **Validación de Concepto:** Las reuniones servirán para filtrar ideas inviables ("esto ya lo probamos y no funciona") antes de invertir tiempo en desarrollo.
 
-### 8.2. Entregables de Producto
+### 8.2. Organización del Equipo y Entregables
+El equipo de la Consultora deberá estructurarse bajo los roles definidos administrativamente:
+*   **Investigadores/Encuestadores:** Foco en la recolección de datos y benchmarking.
+*   **Líder de Gestión (Manager):** Coordinación de sprints y visión organizacional.
+*   **Desarrolladores:** Implementación técnica del producto "Dubai Chocolate".
+
+#### Entregables de Producto
 1.  **Memoria Técnica y de Requerimientos:** Este documento ampliado y validado.
 2.  **Producto Funcional ("Dubai Chocolate"):** Un prototipo que sea "comprable" por su calidad estética y lógica, no una simple maqueta.
 3.  **Mapa de Procesos:** Diseño de cómo interactuarán físicamente los roles (Director, Tutor, Docente, Alumno) con el sistema.
