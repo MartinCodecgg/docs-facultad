@@ -51,11 +51,11 @@ El sistema debe permitir la carga y procesamiento de las siguientes variables, c
 #### A. Variables de Perfil de Base (Carga Única)
 *   **Origen e Institución:** Tipo de secundario (Pública vs. Privada), lugar de procedencia y percepción del desempeño escolar previo.
 *   **Indicadores Socio-Educativos:** Nivel educativo de la madre (predictor crítico de éxito académico identificado por el cliente).
-*   **Situación Habitacional y Movilidad:** Si el estudiante alquila, distancia precisa de viaje (Kilómetros) y medios de transporte utilizados.
-*   **Entorno Familiar:** Composición familiar, cantidad de personas a cargo y posibles situaciones de hermanos en la misma facultad (indicador de apoyo o carga económica).
+*   **Situación Habitacional y Movilidad:** Si el estudiante alquila, lugar de origen y distancia/medios de transporte utilizados.
+*   **Entorno Familiar:** Composición familiar y cantidad de personas a cargo.
 
 #### B. Variables Dinámicas y Cualitativas (Carga Periódica)
-*   **Laboral:** Status de empleo, carga horaria semanal y afinidad de la tarea con la especialidad.
+*   **Laboral:** Status de empleo y carga horaria semanal.
 *   **Factores de Riesgo Específicos:** 
     *   **Salud y Emocional:** Problemas de salud, estrés, ataques de pánico (específicamente relevantes en el tramo final).
     *   **Logística y Clima:** Dificultades de traslado, impacto de alertas meteorológicas que impidieron rendir o cursar.
@@ -110,7 +110,7 @@ El sistema debe ofrecer una visualización de datos dinámica e interactiva que 
     *   **Alertas de Cátedra y Contraste de Rendimiento:** Identificación de materias con picos de desaprobados. El sistema debe permitir el **contraste automático** entre la estadística de aprobación (ej. 90% aprobados) y la percepción del alumno (ej. 0% de satisfacción), para detectar cátedras con problemas de clima o métodos pedagógicos deficientes. Esto permitirá al Director del Departamento la **intervención directa con los docentes** responsables (ej. casos donde la tasa de aplazos se duplica).
     *   **Monitoreo de la Gestión de Tutorías:** Tablero de control para que el Director supervise la actividad de los tutores, asegurando que las entrevistas se realicen y se registren en tiempo y forma.
     *   **Exportación para Investigación:** Capacidad de exportar estructuras de datos que sirvan para alimentar las investigaciones académicas del Departamento sobre deserción.
-*   **Canal de Solicitud de Ayuda (Botón de Auxilio):** El sistema debe proveer una interfaz directa (pantalla de asistencia) donde el alumno en situación de crisis pueda solicitar intervención inmediata de los tutores, centralizando reclamos que usualmente se dispersan en páginas externas.
+*   **Canal de Solicitud de Ayuda (Botón de Auxilio):** El sistema debe proveer una interfaz directa (pantalla de asistencia) donde el alumno en situación de crisis pueda solicitar intervención inmediata de los tutores, centralizando reclamos y consultas (ej. información sobre el sistema de becas) que usualmente se dispersan en páginas externas.
 
 ### 5.5. Mapa Preliminar de Interfaces (Estructura de Pantallas)
 Basado en los requerimientos funcionales, el sistema debe contemplar al menos los siguientes módulos de visualización:
