@@ -1,0 +1,964 @@
+## Sistema de Seguimiento Estudiantil
+
+## 1. Descripción General
+
+Sistema web embebido en Moodle para calcular y visualizar el **Índice de Riesgo de Deserción (IRD)** de cada alumno, y gestionar la asistencia por parte de tutores.
+
+El sistema se implementa como un único bloque de código (HTML + CSS + JS) incrustado en una actividad de Moodle. No utiliza frameworks externos ni librerías de terceros.
+
+### Usuarios y accesos
+
+|Usuario|Página|Puede hacer|
+|---|---|---|
+|Tutor / Profesor|Dashboard (2 paneles)|Ver IRD de todos los alumnos, marcar asistencias, ver solicitudes pendientes|
+|Alumno|Panel del alumno (actividad separada)|Ver su propio IRD, solicitar asistencia|
+
+### Acceso al dashboard
+
+Protegido por un modal de "pantalla falsa". El tutor accede haciendo clic en el elemento `accusum` de la página. Los detalles de implementación de este mecanismo deben ser provistos por el desarrollador.
+
+---
+
+## 2. Arquitectura del Sistema
+
+### 2.1 Stack técnico
+
+- **Lenguaje**: JavaScript vanilla (ES2020+), HTML, CSS
+- **Empaquetado**: un único archivo HTML con CSS y JS embebido en etiqueta `<script>`
+- **Persistencia**: dos actividades "Base de datos" de Moodle, accedidas vía `fetch` simulando acciones del usuario autenticado
+- **Datos del IRD**: scraping de páginas de resultados de actividades Feedback de Moodle
+- **Sin frameworks**: cero dependencias externas
+- **Sin handlers HTML**: todos los eventos registrados exclusivamente vía `addEventListener` (restricción de Moodle)
+
+### 2.2 Flujo general de datos
+
+```
+[Tutor abre el dashboard]
+          │
+          ▼
+[Promise.all — 4 fuentes en paralelo]
+    │          │           │           │
+[Encuesta  [Encuesta   [DB Solic.  [DB Logs]
+ inicial]   cuatrim.]   alumnos]
+          │
+          ▼
+[Parseo y merge de datos por id_alumno]
+          │
+          ▼
+[Cálculo de Z_max dinámico desde estructura de encuestas]
+          │
+          ▼
+[Cálculo de IRD por alumno: Z / Z_max × 100]
+          │
+          ▼
+[Ordenar por IRD descendente — nulls al final]
+          │
+          ▼
+[Renderizar Panel 1 y Panel 2 con paginación de 30]
+```
+
+### 2.3 Consideraciones de rendimiento
+
+Los fetches se realizan por internet. Cada fetch a una página Moodle toma aproximadamente 200–600ms. Con `Promise.all`, todas las fuentes se consultan en paralelo, por lo que el tiempo total es el del fetch más lento: **600ms–1.5s**. Completamente aceptable con un spinner de carga visible.
+
+Cada fuente puede estar paginada (Moodle devuelve N resultados por página). La estrategia es:
+
+1. Hacer el primer fetch de cada fuente para detectar el total de páginas.
+2. Lanzar en paralelo todos los fetches restantes de cada fuente.
+3. Una vez completos todos, procesar y renderizar.
+
+**¿Por qué no carga progresiva?** El Panel 1 necesita los datos de las 4 fuentes cruzados para calcular el IRD, la última asistencia y la última solicitud de cada alumno. No se puede mostrar hasta tener todo. Los Paneles 2 y 3 podrían renderizarse antes, pero la complejidad añadida no justifica el beneficio marginal. Un único spinner hasta que todo esté listo es la solución correcta.
+
+**Cooldown del botón Actualizar:** para evitar saturar el servidor Moodle con clicks repetidos, el botón queda deshabilitado durante `ACTUALIZAR_COOLDOWN_SEG` segundos (valor por defecto: 30) después de cada actualización. Se muestra un contador regresivo visible junto al botón.
+
+---
+
+## 3. Fuentes de Datos
+
+### 3.1 Fuentes de lectura (scraping vía GET)
+
+|#|Fuente|URL patrón|Datos obtenidos|
+|---|---|---|---|
+|1|Encuesta inicial|`/mod/feedback/show_entries.php?id=[CMID_INICIAL]&page=N`|Respuestas estáticas por alumno (nombre, foto, respuestas)|
+|2|Encuesta cuatrimestral|`/mod/feedback/show_entries.php?id=[CMID_CUATRIMESTRAL]&page=N`|Respuestas dinámicas + fecha de última entrega|
+|3|DB Solicitudes de ayuda|`/mod/data/view.php?id=[CMID_DB_SOLICITUDES]&page=N`|Solicitudes pendientes y atendidas|
+|4|DB Log de asistencias|`/mod/data/view.php?id=[CMID_DB_LOGS]&page=N`|Historial de asistencias por tutor|
+
+### 3.2 Escritura (POST simulando acciones del usuario)
+
+|Acción|URL|
+|---|---|
+|Tutor agrega entrada al log de asistencias|`/mod/data/edit.php?d=[DATAID_DB_LOGS]`|
+|Tutor aprueba solicitud de alumno|`/mod/data/view.php` + parámetros a descubrir vía DevTools|
+|Alumno envía solicitud de ayuda|`/mod/data/edit.php?d=[DATAID_DB_SOLICITUDES]`|
+
+### 3.3 CSRF — Sesskey
+
+Moodle requiere un token anti-CSRF (`sesskey`) en todos los POST. Se obtiene directamente de la variable global disponible en cualquier página Moodle:
+
+```javascript
+const sesskey = M.cfg.sesskey;
+```
+
+No requiere ningún fetch adicional.
+
+---
+
+## 4. Bases de Datos Moodle
+
+### 4.1 Base de datos 1 — Solicitudes de ayuda
+
+**Configuración Moodle:**
+
+- Requiere aprobación del tutor antes de que la entrada sea visible para terceros.
+- Cada alumno solo puede ver sus propias entradas.
+- Los tutores pueden ver todas las entradas, incluyendo las pendientes de aprobación.
+
+**Campos a crear manualmente en la actividad:**
+
+|Campo|Tipo en Moodle|Obligatorio|Descripción|
+|---|---|---|---|
+|`descripcion`|Área de texto|No|Mensaje opcional del alumno explicando su situación|
+
+Moodle provee automáticamente sin necesidad de crear campos: ID de entrada, nombre completo del alumno, foto de perfil (enlace), fecha de envío, estado de aprobación (pendiente / aprobada).
+
+### 4.2 Base de datos 2 — Log de asistencias
+
+**Configuración Moodle:**
+
+- Sin requerimiento de aprobación.
+- Accesible únicamente para tutores y profesores.
+- Los alumnos no tienen acceso a esta actividad.
+
+**Campos a crear manualmente en la actividad:**
+
+|Campo|Tipo en Moodle|Obligatorio|Descripción|
+|---|---|---|---|
+|`nombre_alumno`|Texto corto|Sí|Nombre completo del alumno asistido|
+|`id_alumno`|Texto corto|Sí|ID de usuario Moodle del alumno (necesario para cruzar datos del scraping)|
+|`nombre_tutor`|Texto corto|Sí|Nombre del tutor que realizó la asistencia (simplifica el scraping; evita buscar el perfil del tutor por separado)|
+|`origen`|Menú desplegable|Sí|Valores fijos: `Proactivo` / `Solicitud`|
+
+Moodle provee automáticamente: fecha de la entrada (= fecha de la asistencia), ID de entrada, autor de la entrada.
+
+> **¿De dónde sale `id_alumno`?** El scraping del Feedback extrae el ID numérico del alumno desde el link al perfil que Moodle incluye en cada entrada de resultados. Ese link tiene la forma `/user/view.php?id=123&course=456` — el valor `123` es el `id_alumno` que se almacena aquí y se usa para cruzar datos entre paneles.
+
+---
+
+## 5. Cálculo del Índice de Riesgo de Deserción (IRD)
+
+### 5.1 Fórmula
+
+**Paso 1 — Puntaje bruto:**
+
+```
+Z = Σ (βᵢ × xᵢ)
+```
+
+Donde:
+
+- `Z` = puntaje bruto de riesgo
+- `βᵢ` = peso asignado a la variable i
+- `xᵢ` = valor de la respuesta del alumno para la variable i
+
+**Paso 2 — Normalización a escala 0–100:**
+
+```
+IRD = (Z / Z_max) × 100
+```
+
+Donde `Z_max` es el puntaje máximo teórico posible, calculado dinámicamente en cada apertura:
+
+```
+Z_max = Σ (βᵢ × valor_máximo_i)
+```
+
+Z_max se recalcula en cada apertura porque las encuestas pueden cambiar con el tiempo.
+
+### 5.2 Escala de pesos β
+
+|Importancia|β|
+|---|---|
+|Muy baja|0.5|
+|Baja|1.0|
+|Media|1.5|
+|Alta|2.0|
+|Muy alta|2.5|
+
+### 5.3 Ejemplo de variables (fragmento)
+
+|Variable|β|Valores posibles|Encuesta|
+|---|---|---|---|
+|Padres sin estudios|0.7|0 a 4|Inicial|
+|Trabaja|1.0|0 a 1|Inicial|
+|Horas de trabajo|1.2|0 a 4|Cuatrimestral|
+|Situación económica|1.2|0 a 4|Cuatrimestral|
+|Tiempo de viaje|0.8|0 a 4|Cuatrimestral|
+|Estrés|1.4|0 a 4|Cuatrimestral|
+|Motivación|1.7|0 a 4|Cuatrimestral|
+
+### 5.4 Colores y umbral del IRD
+
+|Rango IRD|Color|Descripción|Botón "Asistir" en Panel 1|
+|---|---|---|---|
+|80 – 100|🔴 Rojo|Intervención inmediata|Visible (si cumple condición)|
+|40 – 79|🟡 Amarillo|Seguimiento y tutoría par|Visible (si cumple condición)|
+|0 – 39|🟢 Verde|Sin riesgo|No visible|
+|Sin datos|—|Encuestas incompletas|No visible|
+
+**Umbral configurable:** `THRESHOLD_IRD = 40` (una sola línea para modificar).
+
+### 5.5 Pseudocódigo del cálculo
+
+```
+// ─────────────────────────────────────────────
+// CONSTANTES DE CONFIGURACIÓN
+// (completar antes de implementar)
+// ─────────────────────────────────────────────
+
+THRESHOLD_IRD            = 40
+QUARTERLY_WARNING_DAYS   = 90
+RESULTS_PER_PAGE_MOODLE  = [verificar inspeccionando Moodle]
+PAGE_SIZE_PANELS         = 30
+MOODLE_BASE_URL          = "https://..."
+ACTUALIZAR_COOLDOWN_SEG  = 30   // segundos de espera entre clicks en "Actualizar"
+
+// ─────────────────────────────────────────────
+// DEFINICIÓN DE PREGUNTAS
+// Para agregar una pregunta nueva: añadir una entrada al final del array correspondiente.
+// No se requiere ningún otro cambio en el código.
+// ─────────────────────────────────────────────
+
+// Preguntas de la ENCUESTA INICIAL (datos estáticos, se completa una sola vez)
+const INITIAL_QUESTIONS = [
+  {
+    id:        "id_html_pregunta_1",    // selector en el HTML de resultados del Feedback
+    texto:     "Nivel educativo de los padres",
+    beta:      0.7,
+    maxValue:  4,
+    respuestas: {                       // mapeo: texto que devuelve Moodle → valor numérico
+      "Universitario completo": 0,
+      "Universitario incompleto": 1,
+      "Secundario completo": 2,
+      "Secundario incompleto": 3,
+      "Sin estudios": 4
+    }
+  },
+  // agregar más preguntas de la encuesta inicial aquí...
+]
+
+// Preguntas de la ENCUESTA CUATRIMESTRAL (datos dinámicos, se recalculan cada cuatrimestre)
+const QUARTERLY_QUESTIONS = [
+  {
+    id:        "id_html_pregunta_n",
+    texto:     "Nivel de estrés académico actual",
+    beta:      1.4,
+    maxValue:  4,
+    respuestas: {
+      "Muy bajo":  0,
+      "Bajo":      1,
+      "Medio":     2,
+      "Alto":      3,
+      "Muy alto":  4
+    }
+  },
+  // agregar más preguntas de la encuesta cuatrimestral aquí...
+]
+
+
+// ─────────────────────────────────────────────
+// CÁLCULO DE Z_MAX (al iniciar la página)
+// Se calcula automáticamente desde ambos arrays — no requiere ajuste manual
+// ─────────────────────────────────────────────
+
+function calcularZmax():
+    total = 0
+    para cada pregunta en [...INITIAL_QUESTIONS, ...QUARTERLY_QUESTIONS]:
+        total += pregunta.beta * pregunta.maxValue
+    retornar total
+
+
+// ─────────────────────────────────────────────
+// FETCH PARALELO DE TODAS LAS FUENTES
+// ─────────────────────────────────────────────
+
+async function fetchTodasLasPaginas(urlBase):
+    primeraRespuesta = await fetch(urlBase + "&page=0")
+    totalPaginas     = detectarTotalPaginas(primeraRespuesta)
+
+    si totalPaginas == 1:
+        retornar [primeraRespuesta]
+
+    fetchsRestantes = []
+    para N desde 1 hasta totalPaginas - 1:
+        fetchsRestantes.push(fetch(urlBase + "&page=" + N))
+
+    resto = await Promise.all(fetchsRestantes)
+    retornar [primeraRespuesta, ...resto]
+
+
+async function cargarTodosLosDatos():
+    sesskey = M.cfg.sesskey
+
+    // Lanzar las 4 fuentes en paralelo
+    [paginasInicial, paginasCuat, paginasSolicitudes, paginasLogs] =
+        await Promise.all([
+            fetchTodasLasPaginas(URL_ENCUESTA_INICIAL),
+            fetchTodasLasPaginas(URL_ENCUESTA_CUATRIMESTRAL),
+            fetchTodasLasPaginas(URL_DB_SOLICITUDES),
+            fetchTodasLasPaginas(URL_DB_LOGS)
+        ])
+
+    // Parsear cada fuente
+    datosIniciales  = parsearFeedback(paginasInicial)
+    // → { id_alumno: { nombre, foto, respuestas: { id_pregunta: valor } } }
+
+    datosCuat       = parsearFeedback(paginasCuat)
+    // → { id_alumno: { respuestas: { id_pregunta: valor }, fechaEntrega } }
+
+    solicitudes     = parsearSolicitudes(paginasSolicitudes)
+    // → { id_alumno: { pendiente: bool, fechaSolicitud, entryId } }
+
+    logs            = parsearLogs(paginasLogs)
+    // → { id_alumno: { ultimaFecha, ultimoTutor } }
+
+    Z_max = calcularZmax()
+    alumnos = []
+
+    // ── Construir objeto por alumno y calcular IRD ──
+    para cada id_alumno en datosIniciales:
+
+        alumno = {
+            id:               id_alumno,
+            nombre:           datosIniciales[id_alumno].nombre,
+            foto:             datosIniciales[id_alumno].foto,
+            respInic:         datosIniciales[id_alumno].respuestas,
+            respCuat:         datosCuat[id_alumno]?.respuestas ?? null,
+            fechaCuat:        datosCuat[id_alumno]?.fechaEntrega ?? null,
+            tienePendiente:   solicitudes[id_alumno]?.pendiente ?? false,
+            fechaSolicitud:   solicitudes[id_alumno]?.fechaSolicitud ?? null,
+            entryIdSolicitud: solicitudes[id_alumno]?.entryId ?? null,
+            ultimaAsistencia: logs[id_alumno]?.ultimaFecha ?? null,
+            ultimoTutor:      logs[id_alumno]?.ultimoTutor ?? null,
+            IRD:              null
+        }
+
+        // Calcular IRD solo si completó ambas encuestas
+        si alumno.respInic != null Y alumno.respCuat != null:
+            Z = 0
+            para cada pregunta en INITIAL_QUESTIONS:
+                valor = alumno.respInic[pregunta.id] ?? 0
+                Z += pregunta.beta * valor
+            para cada pregunta en QUARTERLY_QUESTIONS:
+                valor = alumno.respCuat[pregunta.id] ?? 0
+                Z += pregunta.beta * valor
+            alumno.IRD = redondear((Z / Z_max) * 100, 1)
+
+        alumnos.push(alumno)
+
+    // Ordenar por IRD descendente (nulls al final)
+    alumnos.sort((a, b) =>
+        a.IRD == null ? 1 :
+        b.IRD == null ? -1 :
+        b.IRD - a.IRD
+    )
+
+    retornar alumnos
+
+
+// ─────────────────────────────────────────────
+// LÓGICA DE DISPLAY
+// ─────────────────────────────────────────────
+
+function colorIRD(ird):
+    si ird >= 80: retornar "rojo"
+    si ird >= 40: retornar "amarillo"
+    retornar "verde"
+
+// ¿Mostrar botón "Asistir" en Panel 1?
+function mostrarBotonAsistir(alumno):
+    si alumno.IRD == null:                                       retornar false
+    si alumno.IRD < THRESHOLD_IRD:                              retornar false
+    si alumno.ultimaAsistencia == null:                         retornar true
+    si alumno.fechaSolicitud > alumno.ultimaAsistencia:         retornar true
+    retornar false
+
+// ¿Mostrar advertencia de encuesta desactualizada? (panel del alumno)
+function mostrarAdvertenciaEncuesta(alumno):
+    si alumno.fechaCuat == null:                                retornar true
+    si diasDesde(alumno.fechaCuat) > QUARTERLY_WARNING_DAYS:   retornar true
+    retornar false
+```
+
+---
+
+## 6. Diseño de los Paneles — ASCII
+
+### Cabecera de página
+
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║  ████████████████████████████████████████████████████████████████  ║
+║  █                                                              █  ║
+║  █      TABLEROS DE CONTROL                                     █  ║  ← fondo verde, texto blanco
+║  █      Sistema de Seguimiento Estudiantil                      █  ║
+║  █                                                              █  ║
+║  ████████████████████████████████████████████████████████████████  ║
+║                                                                     ║
+║  Última actualización: 03/06/2025 10:47        [↺ Actualizar datos] ║
+╚══════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+### Panel 1 — Índice de Riesgo de Deserción
+
+**Filtros colapsados (estado inicial):**
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  📊  Índice de Riesgo de Deserción                            [▼ Filtros]      │
+├──────┬───────────┬───────────┬──────────┬──────────────────┬──────────────────┬──────────┤
+│ Foto │  Nombre   │ Apellido  │  IRD ↕   │ Últ. Asistencia↕ │ Últ. Solicitud ↕ │  Acción  │
+├──────┼───────────┼───────────┼──────────┼──────────────────┼──────────────────┼──────────┤
+│ [👤] │ Juan      │ García    │ [85] 🔴  │ Prof.Ruiz 01/06  │ 03/06 10:20      │[Asistir] │
+│ [👤] │ María     │ López     │ [72] 🟡  │ —                │ 02/06 14:30      │[Asistir] │
+│ [👤] │ Pedro     │ Martínez  │ [45] 🟢  │ Prof.Ruiz 28/05  │ —                │          │
+│ [👤] │ Ana       │ Rodríguez │ [30] 🟢  │ —                │ —                │          │
+│ [👤] │ Carlos    │ Díaz      │ Sin datos│ —                │ —                │          │
+├──────┴───────────┴───────────┴──────────┴──────────────────┴──────────────────┴──────────┤
+│                               ◀  1  [2]  3  ▶   (30 por página)                          │
+└───────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Filtros expandidos (empujan la tabla hacia abajo):**
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  📊  Índice de Riesgo de Deserción                            [▲ Filtros]      │
+├────────────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  IRD mínimo: [ 40 ]     IRD máximo: [ 100 ]                             │  │
+│  │  Estado:  (•) Todos   ( ) Asistido   ( ) Sin asistir                    │  │
+│  │                                              [Aplicar]   [Limpiar]      │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+│  Filtros activos: IRD 40–100  ×                                                 │
+├──────┬───────────┬───────────┬──────────┬──────────────────┬──────────────────┬──────────┤
+│ ...  │ ...       │ ...       │ ...      │ ...              │ ...              │ ...      │
+```
+
+**Columnas y ordenamiento:**
+
+|Columna|Ordenable|
+|---|---|
+|Foto|No|
+|Nombre|No|
+|Apellido|No|
+|IRD|Sí ↕ (default: descendente) — badge de color no interactivo|
+|Última asistencia|Sí ↕|
+|Última solicitud|Sí ↕|
+|Acción|No|
+
+**Filtros:** rango de IRD (mínimo / máximo), estado de asistencia (Todos / Asistido / Sin asistir).
+
+---
+
+### Panel 2 — Solicitudes de Ayuda Pendientes
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  🆘  Solicitudes de Ayuda Pendientes                          [▼ Filtros]      │
+├────────────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  Desde: [DD/MM/AAAA]        Hasta: [DD/MM/AAAA]          [Aplicar]      │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+├──────┬───────────┬───────────┬──────────────────────┬──────────────────────────┤
+│ Foto │  Nombre   │ Apellido  │  Fecha solicitud ↕   │         Acción           │
+├──────┼───────────┼───────────┼──────────────────────┼──────────────────────────┤
+│ [👤] │ Juan      │ García    │   03/06  10:20       │  [Marcar como atendido]  │
+│ [👤] │ Ana       │ Rodríguez │   02/06  08:15       │  [Marcar como atendido]  │
+├──────┴───────────┴───────────┴──────────────────────┴──────────────────────────┤
+│                          ◀  1  [2]  ▶   (30 por página)                         │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Estado vacío:**
+
+```
+│              ✅  Sin solicitudes pendientes en este momento                      │
+```
+
+**Columnas y ordenamiento:**
+
+|Columna|Ordenable|
+|---|---|
+|Foto|No|
+|Nombre|No|
+|Apellido|No|
+|Fecha solicitud|Sí ↕ (default: descendente)|
+|Acción|No|
+
+**Filtros:** rango de fechas (desde / hasta).
+
+---
+
+> **Nota:** el Log de Asistencias no tiene panel en el dashboard. La actividad "Base de Datos" de Moodle que almacena los logs provee sus propias vistas con ordenamiento por campos y filtros, incluyendo el campo `nombre_tutor`. El tutor puede consultarla directamente desde Moodle. Una vista integrada en el dashboard queda como implementación futura opcional (ver sección 9.3).
+
+---
+
+### Panel del Alumno (actividad separada)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│       Portal de Seguimiento — [Nombre del alumno]            │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ╔══════════════════════════════════════════════════════╗    │
+│  ║  ⚠️  Sus datos pueden estar desactualizados.         ║    │  ← solo si aplica
+│  ║  Complete la encuesta cuatrimestral para ver         ║    │
+│  ║  información actualizada.                            ║    │
+│  ╚══════════════════════════════════════════════════════╝    │
+│                                                              │
+│            Su Índice de Riesgo de Deserción                  │
+│                                                              │
+│                     ┌─────────┐                             │
+│                     │   72    │ 🟡                          │
+│                     └─────────┘                             │
+│                                                              │
+│  Estado de su última solicitud:                             │
+│    ✅  Atendida el 01/06 por Prof. Ruiz                      │
+│  — o —                                                       │
+│    🕐  Pendiente — enviada el 03/06 10:20                    │
+│  — o —                                                       │
+│    —   (nunca solicitó asistencia)                           │
+│                                                              │
+│       ┌──────────────────────────────────┐                  │
+│       │       Solicitar asistencia       │  ← activo        │
+│       └──────────────────────────────────┘                  │
+│                                                              │
+│       ┌──────────────────────────────────┐                  │
+│       │   Ya tenés una solicitud activa  │  ← deshabilitado │
+│       └──────────────────────────────────┘                  │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Reglas de acceso:**
+
+- El alumno debe haber completado la encuesta inicial (restricción configurada en Moodle a nivel de actividad, fuera del código).
+- La encuesta cuatrimestral no puede restringirse desde Moodle. El panel verifica la fecha de la última entrega del alumno. Si supera `QUARTERLY_WARNING_DAYS` días, o si nunca fue entregada, muestra la advertencia.
+
+**Regla del botón de solicitud:**
+
+- Deshabilitado si el alumno tiene una solicitud pendiente (entrada no aprobada en DB Solicitudes).
+- Activo en cualquier otro caso.
+
+---
+
+## 7. Flujos de Acción Completos
+
+### 7.1 Tutor asiste desde Panel 1 (proactivo)
+
+```
+Tutor hace clic en "Asistir" para el alumno X
+          │
+          ├── UI: deshabilitar TODOS los elementos con data-student-id="X"
+          │        en la página (Panel 1 y Panel 2 simultáneamente)
+          │
+          ├── POST → DB Logs
+          │          { nombre_alumno, id_alumno, nombre_tutor, origen: "Proactivo" }
+          │
+          ├── ¿Alumno X tiene solicitud pendiente?
+          │       ├── SÍ → POST para aprobar entrada en DB Solicitudes (entryId conocido)
+          │       └── NO → continuar
+          │
+          └── ¿Todos los POSTs exitosos?
+                  ├── SÍ → botón Panel 1 muestra "Asistido"
+                  │         fila de Panel 2 desaparece en próximo Actualizar
+                  └── NO → revertir todos los botones al estado anterior
+                            mostrar mensaje de error al tutor
+```
+
+### 7.2 Tutor asiste desde Panel 2 (por solicitud)
+
+```
+Tutor hace clic en "Marcar como atendido" para el alumno X
+          │
+          ├── UI: deshabilitar TODOS los elementos con data-student-id="X"
+          │        en la página (Panel 1 y Panel 2 simultáneamente)
+          │
+          ├── POST → DB Logs
+          │          { nombre_alumno, id_alumno, nombre_tutor, origen: "Solicitud" }
+          │
+          ├── POST → Aprobar entrada en DB Solicitudes (entryId conocido)
+          │
+          └── ¿Todos los POSTs exitosos?
+                  ├── SÍ → botón Panel 2 muestra "Atendido"
+                  │         Panel 1 actualiza "Últ. Asistencia" en próximo Actualizar
+                  └── NO → revertir + mostrar error
+```
+
+### 7.3 Alumno solicita asistencia
+
+```
+Alumno hace clic en "Solicitar asistencia"
+          │
+          ├── UI: deshabilitar botón inmediatamente (optimista)
+          │
+          ├── POST → DB Solicitudes
+          │          { descripcion: "[texto opcional del alumno]" }
+          │          Moodle agrega automáticamente: autor, fecha, estado "pendiente"
+          │
+          └── ¿POST exitoso?
+                  ├── SÍ → mostrar "Solicitud enviada — pendiente de atención"
+                  └── NO → revertir botón + mostrar error
+```
+
+---
+
+## 8. Restricciones Técnicas de Moodle
+
+|Restricción|Detalle|
+|---|---|
+|Código embebido|Todo en un único bloque HTML con `<script>` incrustado en una actividad Moodle|
+|Sin event handlers HTML|Prohibido usar `onclick`, `onchange`, etc. en el HTML. Todo vía `addEventListener`|
+|Sesskey obligatorio|Incluir `M.cfg.sesskey` en el body de todo POST. Sin él Moodle rechaza la solicitud|
+|Foto de perfil|Provista por Moodle en el HTML del Feedback. No requiere fetch adicional|
+|Sin dependencias externas|Cero librerías de terceros. JavaScript vanilla únicamente|
+|Acceso al dashboard|Protegido por modal de "pantalla falsa" activado con clic en elemento `accusum`|
+
+---
+
+## 9. Implementaciones Futuras
+
+### 9.1 Modal de mensajería al asistir _(complejidad media-alta)_
+
+Al hacer clic en "Asistir" o "Marcar como atendido", se abre un modal con un campo de texto antes de confirmar la acción. El tutor puede escribir un mensaje directo al alumno desde el mismo panel.
+
+Al confirmar:
+
+1. Se ejecuta el flujo de asistencia normal (sección 7.1 o 7.2).
+2. Se realiza un POST adicional al endpoint de mensajería interna de Moodle para enviar el mensaje al alumno. El `id_alumno` ya está disponible del scraping inicial.
+
+La URL exacta del endpoint de mensajería debe descubrirse inspeccionando las peticiones de red (DevTools) al enviar un mensaje manualmente desde Moodle.
+
+**Beneficio:** elimina la necesidad de que el tutor busque manualmente al alumno en el campus para comunicarse, reduciendo fricción en el flujo de asistencia.
+
+### 9.2 Sistema de notificaciones _(pendiente de definir)_
+
+Dos opciones según el contexto del aula donde se aloje el sistema:
+
+**Opción A — Aula sin alumnos:** usar el sistema de avisos nativos de Moodle. Bajo costo de implementación, sin código adicional significativo.
+
+**Opción B — Aula con alumnos:** enviar un mensaje Moodle a todos los tutores/profesores cuando un alumno realiza una solicitud.
+
+- Los IDs de tutores pueden **hardcodearse** en el código, o
+- Obtenerse **dinámicamente** scrapeando la lista de participantes del aula (`/user/index.php?id=[COURSE_ID]`) y filtrando por rol de tutor/profesor.
+
+### 9.3 Panel de Log de Asistencias integrado en el dashboard _(complejidad baja)_
+
+Vista de solo lectura del log de asistencias integrada debajo de los Paneles 1 y 2, con filtros por tutor y rango de fechas. Por ahora la actividad Base de Datos de Moodle cubre esta necesidad con sus vistas nativas. Implementar este panel agrega comodidad pero no funcionalidad nueva.
+
+---
+
+## 10. Datos Pendientes para el Agente de Código
+
+El agente de código necesita los siguientes valores antes de poder implementar cualquier parte del sistema. Sin los marcados como **Críticos**, el sistema no puede funcionar.
+
+### 10.1 Críticos — sin estos no hay implementación
+
+| Dato                            | Descripción                                                       | Dónde encontrarlo                              |
+| ------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------- |
+| `MOODLE_BASE_URL`               | Dominio completo de la instancia Moodle                           | URL del sitio                                  |
+| `CMID_ENCUESTA_INICIAL`         | ID de la actividad Feedback inicial                               | Parámetro `?id=` en la URL de la actividad     |
+| `CMID_ENCUESTA_CUATRIMESTRAL`   | ID de la actividad Feedback cuatrimestral                         | Parámetro `?id=` en la URL de la actividad     |
+| `CMID_DB_SOLICITUDES`           | ID de la actividad Base de Datos de solicitudes                   | Parámetro `?id=` en la URL de la actividad     |
+| `CMID_DB_LOGS`                  | ID de la actividad Base de Datos de logs                          | Parámetro `?id=` en la URL de la actividad     |
+| `DATAID_DB_SOLICITUDES`         | ID de instancia de la DB de solicitudes                           | Parámetro `?d=` en la URL de edición de la DB  |
+| `DATAID_DB_LOGS`                | ID de instancia de la DB de logs                                  | Parámetro `?d=` en la URL de edición de la DB  |
+| Lista completa de preguntas     | Ver tabla abajo                                                   | Inspección del HTML de resultados del Feedback |
+| Estructura HTML de resultados   | Cómo Moodle renderiza cada respuesta de encuesta                  | Inspección de `/mod/feedback/show_entries.php` |
+| Parámetros POST de aprobación   | Qué campos y valores envía Moodle al aprobar una entrada en la DB | DevTools → Network al aprobar manualmente      |
+| Detalles del elemento `accusum` | Selector CSS / ID del elemento para el modal de acceso            | Provistos por el desarrollador                 |
+
+**Como se obtiene el CMID vs DATAID?:**
+
+**CMID** — lo ves directamente en la URL cuando navegás a la actividad: `/mod/data/view.php?id=123` → el `123` es el CMID.
+
+**DATAID** — lo obtenés inspeccionando el Network al agregar una entrada manualmente:
+
+1. Abrís DevTools → Network
+2. Hacés clic en "Agregar entrada" y completás cualquier cosa
+3. Buscás el POST que se dispara
+4. En el body del POST vas a ver un campo `d=456` → el `456` es el DATAID
+
+También podés verlo más fácil: cuando hacés clic en "Agregar entrada", la URL de ese formulario ya contiene `?d=456` antes de submitear. No hace falta ni llegar al POST, con solo abrir el formulario de agregar ya lo tenés en la barra del navegador.
+
+### 10.2 Preguntas de las encuestas — tabla a completar
+
+Por cada pregunta de ambas encuestas, el agente necesita:
+
+|Campo|Descripción|
+|---|---|
+|`id`|Identificador HTML de la pregunta tal como aparece en el HTML de resultados del Feedback|
+|`textoPregunta`|Texto legible de la pregunta (para referencia)|
+|`beta` (β)|Peso asignado según la escala de importancia|
+|`maxValue`|Valor máximo posible de la respuesta (1 para binarias, 4 para escala)|
+|`respuestas`|Mapeo texto→número: texto exacto que devuelve Moodle para cada opción y su valor numérico correspondiente|
+
+> El campo `source` ya no es necesario: las preguntas de encuesta inicial van en `INITIAL_QUESTIONS` y las cuatrimestrales en `QUARTERLY_QUESTIONS`. El array determina la fuente.
+
+### 10.3 Configurables — tienen valor por defecto sugerido
+
+|Constante|Valor sugerido|Descripción|
+|---|---|---|
+|`THRESHOLD_IRD`|`40`|IRD mínimo para mostrar botón "Asistir" en Panel 1|
+|`ACTUALIZAR_COOLDOWN_SEG`|`30`|Segundos de espera entre clicks en "Actualizar" para no saturar el servidor|
+|`QUARTERLY_WARNING_DAYS`|`90`|Días sin entregar la encuesta cuatrimestral antes de mostrar advertencia al alumno|
+|`RESULTS_PER_PAGE_MOODLE`|Verificar|Cuántos resultados devuelve Moodle por página en Feedback (inspeccionar la página de resultados)|
+|`PAGE_SIZE_PANELS`|`30`|Resultados por página en cada panel del dashboard|
+
+### 10.4 Para implementaciones futuras (opcionales por ahora)
+
+|Dato|Para qué se usa|
+|---|---|
+|URL del endpoint de mensajería Moodle|Modal de mensaje al asistir (sección 9.1)|
+|IDs de tutores/profesores|Notificaciones hardcodeadas (sección 9.2, opción A)|
+|`COURSE_ID`|Scraping dinámico de tutores para notificaciones (sección 9.2, opción B)|
+
+### 10.5 Ultimas Reestricciones Tecnicas
+
+#### Iconos: Emoji vs SVG
+
+##### Usar SVG
+
+Para iconos **muy visibles o permanentes en la UI**:
+
+- Navbar / Sidebar
+- Botones importantes
+- Dashboard / Cards
+- Inputs con iconos
+- Estados permanentes visibles
+
+**Motivo:** look más profesional, consistente entre sistemas y control total con CSS.
+
+##### Usar Emoji
+
+Para **mensajes temporales o feedback rápido**:
+
+- `⏳ Enviando...`
+- `✅ Guardado`
+- `❌ Error`
+- `⚠️ Advertencia`
+
+**Motivo:** simples, rápidos, menos código y suficientes para estados transitorios.
+
+##### Regla rápida
+
+**UI visible/permanente → SVG**  
+**Feedback temporal → Emoji**
+
+***
+
+# Codigo Referencia Funcional 1: Crear Registro en base de datos
+
+**(Contiene Pantalla falsa que debera implementarse en la pagina de los tableros de control)**
+**Al hacer click en `accusam` recien es visible el panel con el objetivo de ocultar el contenido a otros grupos.**
+
+```html
+<!-- BLOQUE MOODLE: Crear entrada en Base de Datos -->
+<div id="pantalla-falsa">
+  <p style="font-size: 15px; color: #444; line-height: 1.8;"
+    data-darkreader-inline-color=""><strong>Página de prueba Moodle</strong></p>
+  <p style="font-size: 14px; color: #555; line-height: 1.8;"
+    data-darkreader-inline-color="">Lorem ipsum dolor sit amet, consectetur
+    adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna
+    aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris
+    nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in
+    reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla
+    pariatur.</p>
+  <p style="font-size: 14px; color: #555; line-height: 1.8;"
+    data-darkreader-inline-color="">Pellentesque habitant morbi tristique
+    senectus et netus et malesuada fames ac turpis egestas. Vestibulum tortor
+    quam, feugiat vitae, ultricies eget, tempor sit amet, ante. Donec eu libero
+    sit amet quam egestas semper. Aenean ultricies mi vitae est, et nunc <span
+      id="btn-oculto" style="cursor: text;">accumsan</span> vehicula nisi.
+    Mauris placerat eleifend leo, quisque sit amet est et sapien ullamcorper
+    pharetra.</p>
+  <p style="font-size: 14px; color: #555; line-height: 1.8;"
+    data-darkreader-inline-color="">Curabitur pretium tincidunt lacus. Nulla
+    gravida orci a odio. Nullam varius, turpis molestie dictum semper, quam quam
+    congue erat, vitae sodales nisi metus a nunc. Aliquam erat volutpat. Nam dui
+    ligula, fringilla a, euismod sodales, sollicitudin vel, wisi.</p>
+</div>
+<div id="tablero" style="display: none; max-width: 400px;">
+  <p style="font-size: 15px; font-weight: 600; color: #333; margin-bottom: 16px;"
+    data-darkreader-inline-color="">Nueva entrada</p>
+  <div style="margin-bottom: 12px;"><label
+      style="display: block; font-size: 13px; color: #555; margin-bottom: 4px;"
+      for="input-materia" data-darkreader-inline-color="">Materia</label> <input
+      id="input-materia"
+      style="width: 100%; padding: 9px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+      type="text" value="Fisica 1" placeholder="Ej: Física 1"
+      data-darkreader-inline-border-top=""
+      data-darkreader-inline-border-right=""
+      data-darkreader-inline-border-bottom=""
+      data-darkreader-inline-border-left=""></div>
+  <div style="margin-bottom: 16px;"><label
+      style="display: block; font-size: 13px; color: #555; margin-bottom: 4px;"
+      for="input-nota" data-darkreader-inline-color="">Nota</label> <input
+      id="input-nota"
+      style="width: 100%; padding: 9px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+      max="10" min="0" type="number" value="10" placeholder="Ej: 10"
+      data-darkreader-inline-border-top=""
+      data-darkreader-inline-border-right=""
+      data-darkreader-inline-border-bottom=""
+      data-darkreader-inline-border-left=""></div>
+  <button id="btn-crear-materia"
+    style="padding: 10px 24px; background: #1a73e8; color: #fff; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; font-weight: 500;"
+    data-darkreader-inline-bgimage="" data-darkreader-inline-bgcolor=""
+    data-darkreader-inline-color=""> Crear entrada </button>
+  <p id="status-crear" style="margin-top: 10px; font-size: 13px;"></p>
+</div>
+<p>
+  <script>
+    (function() {
+
+      document.getElementById('btn-oculto').addEventListener('click',
+        function() {
+          document.getElementById('pantalla-falsa').style.display = 'none';
+          document.getElementById('tablero').style.display = 'block';
+        });
+
+      var BASE_URL = window.location.origin;
+      var DATABASE_ID = 54127;
+      var FIELD_MATERIA = 14;
+      var FIELD_NOTA = 15;
+
+      function getSesskey() {
+        if (window.M && M.cfg && M.cfg.sesskey) return M.cfg.sesskey;
+        var meta = document.querySelector('meta[name="sesskey"]');
+        if (meta) return meta.getAttribute("content");
+        var input = document.querySelector('input[name="sesskey"]');
+        if (input) return input.value;
+        var link = document.querySelector('a[href*="sesskey="]');
+        if (link) {
+          var match = link.href.match(/sesskey=([a-zA-Z0-9]+)/);
+          if (match) return match[1];
+        }
+        return null;
+      }
+
+      document.getElementById("btn-crear-materia")
+        .addEventListener("click", function() {
+
+          var status = document.getElementById("status-crear");
+          var materia = document.getElementById("input-materia").value
+            .trim();
+          var nota = document.getElementById("input-nota").value.trim();
+          var sesskey = getSesskey();
+
+          if (!materia || !nota) {
+            status.style.color = "#c0392b";
+            status.textContent = "❌ Completá ambos campos antes de enviar.";
+            return;
+          }
+
+          if (!sesskey) {
+            status.style.color = "#c0392b";
+            status.textContent =
+              "❌ No se pudo obtener el sesskey. Recargá la página.";
+            return;
+          }
+
+          status.style.color = "#555";
+          status.textContent = "⏳ Enviando...";
+
+          var formData = new FormData();
+          formData.append("d", "11");
+          formData.append("rid", "0");
+          formData.append("sesskey", sesskey);
+          formData.append("field_" + FIELD_MATERIA, materia);
+          formData.append("field_" + FIELD_NOTA, nota);
+          formData.append("saveandview", "Guardar");
+
+          var url = BASE_URL + "/mod/data/edit.php?id=" + DATABASE_ID;
+
+          fetch(url, {
+              method: "POST",
+              body: formData,
+              credentials: "include",
+              redirect: "manual"
+            })
+            .then(function(res) {
+              if (res.status === 303 || res.status === 200 || res.type ===
+                "opaqueredirect") {
+                status.style.color = "#27ae60";
+                status.textContent = "✅ Entrada \"" + materia +
+                  "\" con nota " + nota + " creada correctamente.";
+                document.getElementById("input-materia").value = "";
+                document.getElementById("input-nota").value = "";
+              } else {
+                status.style.color = "#c0392b";
+                status.textContent = "⚠️ Respuesta inesperada: HTTP " +
+                  res.status;
+              }
+            })
+            .catch(function(err) {
+              if (err.message && err.message.includes("opaque")) {
+                status.style.color = "#27ae60";
+                status.textContent =
+                  "✅ Entrada enviada (redirect detectado).";
+              } else {
+                status.style.color = "#c0392b";
+                status.textContent = "❌ Error: " + err.message;
+              }
+            });
+        });
+
+    })();
+  </script>
+</p>
+```
+
+***
+
+# Codigo Referencia Funcional 2: Hacer Scraping y Mostrar en Pantalla los resultados
+
+```js
+// CONSTANTS — update these IDs if activities are recreated
+const MOODLE_BASE_URL = window.location.origin;
+const DATABASE_ACTIVITY_ID = 54127;   // mod/data activity id (from URL ?id=)
+const QUESTIONNAIRE_INITIAL_ID = 0;   // TODO: update after Questionnaire is installed
+const QUESTIONNAIRE_QUARTERLY_ID = 0; // TODO: update after Questionnaire is installed
+
+// Fetch and parse all entries from the Moodle Database activity
+function fetchDatabaseEntries() {
+  return fetch(`${MOODLE_BASE_URL}/mod/data/view.php?id=${DATABASE_ACTIVITY_ID}`)
+    .then(r => r.text())
+    .then(html => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const entries = doc.querySelectorAll('.defaulttemplate-list-body');
+      const data = [];
+
+      entries.forEach(function(entry) {
+        const rows = entry.querySelectorAll('.row');
+        const obj = {};
+        rows.forEach(function(row) {
+          const label = row.querySelector('.font-weight-bold');
+          const value = row.querySelector('.col-8, .col-lg-9');
+          if (label && value) {
+            obj[label.textContent.trim()] = value.textContent.trim();
+          }
+        });
+        if (Object.keys(obj).length > 0) data.push(obj);
+      });
+
+      return data;
+    });
+}
+
+// Result: [{ materia: "Mate 2", nota: "9" }, ...]
+// CONFIRMED WORKING on ingenieria.campus.mdp.edu.ar
+```
