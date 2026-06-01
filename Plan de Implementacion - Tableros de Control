@@ -766,10 +766,34 @@ Para **mensajes temporales o feedback rápido**:
 **Al hacer click en `accusam` recien es visible el panel con el objetivo de ocultar el contenido a otros grupos.**
 
 ```html
+<p>
+  <script>
+    // Quitar margen del <p> que Moodle crea alrededor del script
+    if (document.currentScript?.parentElement?.tagName === "P") {
+      document.currentScript.parentElement.style.margin = "0";
+    }
+    
+    // Pequeño Script para ocultar el titulo default de la actividad pagina lo mas rapido posible
+    (function() {
+      var style = document.createElement("style");
+      style.textContent = `
+         h2:first-of-type {
+           display: none !important;
+         }
+
+         .activity-header {
+           display: none !important;
+         }
+        `;
+      document.head.appendChild(style);
+    })();
+  </script>
+</p>
 <!-- BLOQUE MOODLE: Crear entrada en Base de Datos -->
 <div id="pantalla-falsa">
   <p style="font-size: 15px; color: #444; line-height: 1.8;"
-    data-darkreader-inline-color=""><strong>Página de prueba Moodle</strong></p>
+    data-darkreader-inline-color=""><strong>Página de pruebaa Moodle</strong>
+  </p>
   <p style="font-size: 14px; color: #555; line-height: 1.8;"
     data-darkreader-inline-color="">Lorem ipsum dolor sit amet, consectetur
     adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna
@@ -823,7 +847,6 @@ Para **mensajes temporales o feedback rápido**:
 <p>
   <script>
     (function() {
-
       document.getElementById('btn-oculto').addEventListener('click',
         function() {
           document.getElementById('pantalla-falsa').style.display = 'none';
